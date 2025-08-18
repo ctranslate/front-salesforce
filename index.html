@@ -24,7 +24,7 @@
   </style>
 </head>
 <body>
-  <h2>Create WorkOrder</h2>
+  <h2>Create Request in Salesforce</h2>
 
   <div class="row">
     <label for="subject">Subject</label>
@@ -139,26 +139,36 @@
     fillSelects();
 
     let ctxCache = null;
-    Front.contextUpdates.subscribe(async (ctx) => {
-      ctxCache = ctx;
-      if (ctx?.type !== "singleConversation" || !ctx.conversation) {
-        el.status.textContent = "Open a conversation to use the form.";
-        return;
+   Front.contextUpdates.subscribe(async (ctx) => {
+  ctxCache = ctx;
+  if (ctx?.type !== "singleConversation" || !ctx.conversation) {
+    el.status.textContent = "Open a conversation to use the form.";
+    return;
+  }
+
+  // Set FrontID (read-only)
+  el.frontId.value = ctx.conversation.id;
+
+  // Prefill Subject if empty
+  if (!el.subject.value && ctx.conversation.subject) {
+    el.subject.value = ctx.conversation.subject;
+  }
+
+  // Prefill Client email from very first sender in thread
+  try {
+    const page = await ctx.listMessages();
+    const msgs = page?.results || [];
+    const firstInbound = msgs.find(m => m.direction === "inbound" && m.author?.handle);
+    if (firstInbound?.author?.handle && firstInbound.author.handle.includes("@")) {
+      if (!el.clientEmail.value) {
+        el.clientEmail.value = firstInbound.author.handle;
       }
-      el.frontId.value = ctx.conversation.id;
-      if (!el.subject.value && ctx.conversation.subject) {
-        el.subject.value = ctx.conversation.subject;
-      }
-      try {
-        const recips = await ctx.listRecipients?.();
-        const sender = recips?.results?.find(r => r.role === "sender") || recips?.results?.[0];
-        const maybeEmail = sender?.handle || "";
-        if (!el.clientEmail.value && maybeEmail.includes("@")) {
-          el.clientEmail.value = maybeEmail;
-        }
-      } catch (e) {}
-      el.status.textContent = "Context loaded.";
-    });
+    }
+  } catch (e) { /* ignore */ }
+
+  el.status.textContent = "Context loaded.";
+});
+
 
     function validate() {
       if (!ZAP_URL.startsWith("https://hooks.zapier.com/")) return "Set your Zapier URL in the code.";
