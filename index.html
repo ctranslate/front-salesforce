@@ -17,7 +17,6 @@
     small { color:#6b7280; display:block; margin-top:4px; }
     .btns { display:flex; gap:8px; margin-top:8px; }
     button { border:0; border-radius:8px; cursor:pointer; }
-    .ghost { background:#f3f4f6; }
     .primary { background:#2563eb; color:white; }
     #status { font-size:12px; color:#6b7280; margin-top:8px; }
     .ok { color:#065f46 !important; }
@@ -72,9 +71,9 @@
     <small>Use this area to provide details the linguist needs: context, objectives, participants, materials/links, and any non-obvious requirements.</small>
   </div>
 
+  <!-- Only one button now -->
   <div class="btns">
-    <button id="pull" class="ghost" type="button">Pull from email</button>
-    <button id="send" class="primary" type="button">Send to Zapier</button>
+    <button id="send" class="primary" type="button">Submit</button>
   </div>
 
   <div id="status">Waiting for conversation…</div>
@@ -82,12 +81,9 @@
   <!-- Front Plugin SDK -->
   <script src="https://dl.frontapp.com/libs/plugin-sdk-1.8.1.min.js"></script>
   <script>
-    // ======= CONFIG: set your Zapier Catch Hook URL here =======
     const ZAP_URL = "https://hooks.zapier.com/hooks/catch/XXXXXXX/XXXXXXX/"; // <-- replace
 
-    // ======= Language options (shared by both dropdowns) =======
-    const LANGUAGES = [
-      "Mandarin","Japanese","Korean","French","Spanish","Portuguese","German","EU Portuguese","EU French","EU Spanish",
+    const LANGUAGES = ["Mandarin","Japanese","Korean","French","Spanish","Portuguese","German","EU Portuguese","EU French","EU Spanish",
       "Afrikaans","Amazigh","Amharic","Arabic","Asturian","Azerbaijani","Bahasa Indonesia","Balinese","Basque","Brazilian Portuguese",
       "Bengali","Bosnian","Bulgarian","Burmese","Canadian French","Cantonese","Catalan","Creole","Croatian","Czech",
       "Danish","Dari","Dutch","Esperanto","Estonian","Farsi","Finnish","Flemish","Georgian","Greek",
@@ -95,12 +91,8 @@
       "Khmer","Kurdish","Latin American Spanish","Lao","Lithuanian","Macedonian","Malay","Chinese (Hongkong)","Marathi","Marshallese",
       "Mongolian","Nepalese","Norwegian","Pashto","Persian","Polish","Punjabi","Romanian","Russian","Scots",
       "Serbian","Sinhalese","Slavic","Slovak","Somali","Sundanese","Swahili","Swedish","Tagalog","Taiwanese",
-      "Tamil","Telugu","Teochew","Thai","Turkish","Ukrainian","Urdu","Uyghur","Vietnamese","Other"
-    ];
-
-    // ======= NEW: Service Type options =======
-    const SERVICE_TYPES = [
-      "[CI] Interpret a call (industry discussion)",
+      "Tamil","Telugu","Teochew","Thai","Turkish","Ukrainian","Urdu","Uyghur","Vietnamese","Other"];
+    const SERVICE_TYPES = ["[CI] Interpret a call (industry discussion)",
       "[CI] Interpret a call (IR / management team)",
       "[CI] Interpret an on-site meeting",
       "[SI] Interpret a call (industry discussion)",
@@ -119,21 +111,18 @@
       "[FGD] Moderate a call",
       "Briefing - Moderation",
       "Briefing - Interpretation",
-      "[Other] Bespoke services"
-    ];
+      "[Other] Bespoke services"];
 
-    // ======= DOM helpers =======
     const $ = id => document.getElementById(id);
     const el = {
       subject: $("subject"),
       frontId: $("frontId"),
       clientEmail: $("clientEmail"),
       datetime: $("datetime"),
-      serviceType: $("serviceType"), // NEW
+      serviceType: $("serviceType"),
       srcLang: $("srcLang"),
       tgtLang: $("tgtLang"),
       description: $("description"),
-      pull: $("pull"),
       send: $("send"),
       status: $("status"),
     };
@@ -142,33 +131,24 @@
       return '<option value="" disabled selected>Select…</option>' +
         list.map(v => `<option value="${v}">${v}</option>`).join("");
     }
-
     function fillSelects() {
       el.srcLang.innerHTML = buildSelectOptions(LANGUAGES);
       el.tgtLang.innerHTML = buildSelectOptions(LANGUAGES);
-      el.serviceType.innerHTML = buildSelectOptions(SERVICE_TYPES); // NEW
+      el.serviceType.innerHTML = buildSelectOptions(SERVICE_TYPES);
     }
     fillSelects();
 
     let ctxCache = null;
-
-    // Subscribe to Front context changes
     Front.contextUpdates.subscribe(async (ctx) => {
       ctxCache = ctx;
-
       if (ctx?.type !== "singleConversation" || !ctx.conversation) {
         el.status.textContent = "Open a conversation to use the form.";
         return;
       }
-      // Set FrontID (read-only)
       el.frontId.value = ctx.conversation.id;
-
-      // Prefill Subject if empty
       if (!el.subject.value && ctx.conversation.subject) {
         el.subject.value = ctx.conversation.subject;
       }
-
-      // Try to prefill Client email from sender
       try {
         const recips = await ctx.listRecipients?.();
         const sender = recips?.results?.find(r => r.role === "sender") || recips?.results?.[0];
@@ -176,38 +156,8 @@
         if (!el.clientEmail.value && maybeEmail.includes("@")) {
           el.clientEmail.value = maybeEmail;
         }
-      } catch (e) { /* ignore */ }
-
-      el.status.textContent = "Context loaded. You can also click ‘Pull from email’.";
-    });
-
-    // Pull the latest inbound message body as Description and refresh Subject
-    el.pull.addEventListener("click", async () => {
-      try {
-        if (!ctxCache || ctxCache.type !== "singleConversation") throw new Error("No open conversation");
-
-        // Refresh subject if still empty
-        if (!el.subject.value && ctxCache.conversation?.subject) {
-          el.subject.value = ctxCache.conversation.subject;
-        }
-
-        const page = await ctxCache.listMessages();
-        const msgs = page?.results || [];
-        const latest = [...msgs].reverse().find(m => m.status === "inbound" && m.content?.body) || msgs[msgs.length-1];
-
-        if (latest?.content?.body) {
-          const body = latest.content.type === "html"
-            ? latest.content.body.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
-            : String(latest.content.body).trim();
-          if (!el.description.value) el.description.value = body;
-        }
-
-        el.status.textContent = "Pulled from email. Review and edit before sending.";
-        el.status.className = "ok";
-      } catch (err) {
-        el.status.textContent = "Couldn’t read the email body. Open/scroll the message then try again.";
-        el.status.className = "err";
-      }
+      } catch (e) {}
+      el.status.textContent = "Context loaded.";
     });
 
     function validate() {
@@ -215,7 +165,7 @@
       if (!el.subject.value.trim()) return "Subject is required.";
       if (!el.clientEmail.value.trim()) return "Client’s email is required.";
       if (!el.datetime.value.trim()) return "Date & time is required.";
-      if (!el.serviceType.value) return "Service Type is required."; // NEW
+      if (!el.serviceType.value) return "Service Type is required.";
       if (!el.srcLang.value) return "Source Language is required.";
       if (!el.tgtLang.value) return "Target Language is required.";
       return null;
@@ -225,14 +175,13 @@
       const err = validate();
       if (err) { el.status.textContent = err; el.status.className = "err"; return; }
 
-      // Compose payload (include a deep link to the conversation)
       const payload = {
         subject: el.subject.value.trim(),
         front_id: el.frontId.value || null,
         conversation_url: el.frontId.value ? `https://app.frontapp.com/open/c/${el.frontId.value}` : null,
         client_email: el.clientEmail.value.trim(),
-        datetime_local: el.datetime.value, // local time; parse/convert in Zapier if needed
-        service_type: el.serviceType.value, // NEW
+        datetime_local: el.datetime.value,
+        service_type: el.serviceType.value,
         source_language: el.srcLang.value,
         target_language: el.tgtLang.value,
         description: el.description.value.trim()
@@ -248,10 +197,10 @@
           body: JSON.stringify(payload)
         });
         if (!res.ok) throw new Error("Non-200 from Zapier");
-        el.status.textContent = "Sent to Zapier. Your WorkOrder flow should continue.";
+        el.status.textContent = "Submitted successfully. Your WorkOrder flow should continue.";
         el.status.className = "ok";
       } catch (e) {
-        el.status.textContent = "Failed to send. Check your network and Zap URL.";
+        el.status.textContent = "Failed to submit. Check your network and Zap URL.";
         el.status.className = "err";
       }
     });
