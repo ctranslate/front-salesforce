@@ -83,7 +83,7 @@
   <script>
     const ZAP_URL = "https://hooks.zapier.com/hooks/catch/9441479/u6lrbqp/"; // <-- replace
 
-    const LANGUAGES = ["English","Mandarin","Japanese","Korean","French","Spanish","Portuguese","German","EU Portuguese","EU French","EU Spanish",
+    const LANGUAGES = ["English”,Mandarin","Japanese","Korean","French","Spanish","Portuguese","German","EU Portuguese","EU French","EU Spanish",
       "Afrikaans","Amazigh","Amharic","Arabic","Asturian","Azerbaijani","Bahasa Indonesia","Balinese","Basque","Brazilian Portuguese",
       "Bengali","Bosnian","Bulgarian","Burmese","Canadian French","Cantonese","Catalan","Creole","Croatian","Czech",
       "Danish","Dari","Dutch","Esperanto","Estonian","Farsi","Finnish","Flemish","Georgian","Greek",
@@ -140,35 +140,25 @@
 
     let ctxCache = null;
     Front.contextUpdates.subscribe(async (ctx) => {
-  ctxCache = ctx;
-  if (ctx?.type !== "singleConversation" || !ctx.conversation) {
-    el.status.textContent = "Open a conversation to use the form.";
-    return;
-  }
-
-  // Set FrontID (read-only)
-  el.frontId.value = ctx.conversation.id;
-
-  // Prefill Subject if empty
-  if (!el.subject.value && ctx.conversation.subject) {
-    el.subject.value = ctx.conversation.subject;
-  }
-
-  // Prefill Client email from very first sender in thread
-  try {
-    const page = await ctx.listMessages();
-    const msgs = page?.results || [];
-    const firstInbound = msgs.find(m => m.direction === "inbound" && m.author?.handle);
-    if (firstInbound?.author?.handle && firstInbound.author.handle.includes("@")) {
-      if (!el.clientEmail.value) {
-        el.clientEmail.value = firstInbound.author.handle;
+      ctxCache = ctx;
+      if (ctx?.type !== "singleConversation" || !ctx.conversation) {
+        el.status.textContent = "Open a conversation to use the form.";
+        return;
       }
-    }
-  } catch (e) { /* ignore */ }
-
-  el.status.textContent = "Context loaded.";
-});
-
+      el.frontId.value = ctx.conversation.id;
+      if (!el.subject.value && ctx.conversation.subject) {
+        el.subject.value = ctx.conversation.subject;
+      }
+      try {
+        const recips = await ctx.listRecipients?.();
+        const sender = recips?.results?.find(r => r.role === "sender") || recips?.results?.[0];
+        const maybeEmail = sender?.handle || "";
+        if (!el.clientEmail.value && maybeEmail.includes("@")) {
+          el.clientEmail.value = maybeEmail;
+        }
+      } catch (e) {}
+      el.status.textContent = "Context loaded.";
+    });
 
     function validate() {
       if (!ZAP_URL.startsWith("https://hooks.zapier.com/")) return "Set your Zapier URL in the code.";
@@ -200,50 +190,20 @@
       el.status.textContent = "Sending…";
       el.status.className = "";
 
-// ======= Submit handler (POST all fields as x-www-form-urlencoded) =======
-el.send.addEventListener("click", async () => {
-  const err = validate();
-  if (err) { el.status.textContent = err; el.status.className = "err"; return; }
-
-  // Build URL-encoded body with EVERY field
-  const body = new URLSearchParams();
-  body.set("subject", el.subject.value.trim());
-  body.set("front_id", el.frontId.value || "");
-  if (el.frontId.value) {
-    body.set("conversation_url", `https://app.frontapp.com/open/c/${el.frontId.value}`);
-  }
-  body.set("client_email", el.clientEmail.value.trim());
-  body.set("datetime_local", el.datetime.value);
-  body.set("service_type", el.serviceType.value);
-  body.set("source_language", el.srcLang.value);
-  body.set("target_language", el.tgtLang.value);
-  body.set("description", el.description.value.trim());
-
-  el.status.textContent = "Sending…";
-  el.status.className = "";
-
-  try {
-    const res = await fetch(ZAP_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
-      body
+      try {
+        const res = await fetch(ZAP_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error("Non-200 from Zapier");
+        el.status.textContent = "Submitted successfully. Your WorkOrder flow should continue.";
+        el.status.className = "ok";
+      } catch (e) {
+        el.status.textContent = "Failed to submit. Check your network and Zap URL.";
+        el.status.className = "err";
+      }
     });
-
-    const text = await res.text().catch(() => "");
-    if (!res.ok) {
-      el.status.textContent = `Submit failed: HTTP ${res.status} ${res.statusText}${text ? " — " + text : ""}`;
-      el.status.className = "err";
-      return;
-    }
-
-    el.status.textContent = "Submitted successfully. Your WorkOrder flow should continue.";
-    el.status.className = "ok";
-  } catch (e) {
-    el.status.textContent = `Network/CORS error: ${e?.message || e}`;
-    el.status.className = "err";
-  }
-});
-
   </script>
 </body>
 </html>
