@@ -24,66 +24,73 @@
   </style>
 </head>
 <body>
-  <h2>Create Request in Salesforce</h2>
+  <h2>Create WorkOrder</h2>
 
-  <div class="row">
-    <label for="subject">Subject</label>
-    <div>
-      <input id="subject" type="text" placeholder='e.g., "Medical devices in China", "Breweries in Colombia"' required />
-      <small>Topic of the call. Examples: “Medical devices in China”, “Breweries in Colombia”.</small>
+  <!-- Wrap everything in a form so all fields are sent -->
+  <form id="woForm">
+    <div class="row">
+      <label for="subject">Subject</label>
+      <div>
+        <input id="subject" name="subject" type="text" placeholder='e.g., "Medical devices in China", "Breweries in Colombia"' required />
+        <small>Topic of the call. Examples: “Medical devices in China”, “Breweries in Colombia”.</small>
+      </div>
     </div>
-  </div>
 
-  <div class="row">
-    <label for="frontId">FrontID</label>
-    <input id="frontId" type="text" readonly />
-  </div>
+    <div class="row">
+      <label for="frontId">FrontID</label>
+      <input id="frontId" name="front_id" type="text" readonly />
+    </div>
 
-  <div class="row">
-    <label for="clientEmail">Client’s email</label>
-    <input id="clientEmail" type="email" placeholder="name@company.com" required />
-  </div>
+    <div class="row">
+      <label for="clientEmail">Client’s email</label>
+      <input id="clientEmail" name="client_email" type="email" placeholder="name@company.com" required />
+    </div>
 
-  <div class="row">
-    <label for="datetime">Date & Time booking</label>
-    <input id="datetime" type="datetime-local" required />
-  </div>
+    <div class="row">
+      <label for="datetime">Date & Time booking</label>
+      <input id="datetime" name="datetime_local" type="datetime-local" required />
+    </div>
 
-  <!-- NEW: Service Type -->
-  <div class="row">
-    <label for="serviceType">Service Type</label>
-    <select id="serviceType" required></select>
-  </div>
+    <div class="row">
+      <label for="serviceType">Service Type</label>
+      <select id="serviceType" name="service_type" required></select>
+    </div>
 
-  <div class="row">
-    <label for="srcLang">Source Language</label>
-    <select id="srcLang" required></select>
-  </div>
+    <div class="row">
+      <label for="srcLang">Source Language</label>
+      <select id="srcLang" name="source_language" required></select>
+    </div>
 
-  <div class="row">
-    <label for="tgtLang">Target Language</label>
-    <select id="tgtLang" required></select>
-  </div>
+    <div class="row">
+      <label for="tgtLang">Target Language</label>
+      <select id="tgtLang" name="target_language" required></select>
+    </div>
 
-  <div class="row-full">
-    <label for="description">Description</label>
-    <textarea id="description" placeholder="Add job context, materials, and any special instructions…"></textarea>
-    <small>Use this area to provide details the linguist needs: context, objectives, participants, materials/links, and any non-obvious requirements.</small>
-  </div>
+    <div class="row-full">
+      <label for="description">Description</label>
+      <textarea id="description" name="description" placeholder="Add job context, materials, and any special instructions…"></textarea>
+      <small>Use this area to provide details the linguist needs: context, objectives, participants, materials/links, and any non-obvious requirements.</small>
+    </div>
 
-  <!-- Only one button now -->
-  <div class="btns">
-    <button id="send" class="primary" type="button">Submit</button>
-  </div>
+    <!-- Hidden: conversation deep link, auto-filled -->
+    <input type="hidden" id="conversationUrl" name="conversation_url" />
+
+    <div class="btns">
+      <button id="send" class="primary" type="submit">Submit</button>
+    </div>
+  </form>
 
   <div id="status">Waiting for conversation…</div>
 
   <!-- Front Plugin SDK -->
   <script src="https://dl.frontapp.com/libs/plugin-sdk-1.8.1.min.js"></script>
   <script>
-    const ZAP_URL = "https://hooks.zapier.com/hooks/catch/XXXXXXX/XXXXXXX/"; // <-- replace
+    // ======= CONFIG =======
+    const ZAP_URL = "https://hooks.zapier.com/hooks/catch/9441479/u6lrbqp/"; // <-- replace
 
-    const LANGUAGES = ["Mandarin","Japanese","Korean","French","Spanish","Portuguese","German","EU Portuguese","EU French","EU Spanish",
+    // ======= Options =======
+    const LANGUAGES = [
+      "Mandarin","Japanese","Korean","French","Spanish","Portuguese","German","EU Portuguese","EU French","EU Spanish",
       "Afrikaans","Amazigh","Amharic","Arabic","Asturian","Azerbaijani","Bahasa Indonesia","Balinese","Basque","Brazilian Portuguese",
       "Bengali","Bosnian","Bulgarian","Burmese","Canadian French","Cantonese","Catalan","Creole","Croatian","Czech",
       "Danish","Dari","Dutch","Esperanto","Estonian","Farsi","Finnish","Flemish","Georgian","Greek",
@@ -91,8 +98,11 @@
       "Khmer","Kurdish","Latin American Spanish","Lao","Lithuanian","Macedonian","Malay","Chinese (Hongkong)","Marathi","Marshallese",
       "Mongolian","Nepalese","Norwegian","Pashto","Persian","Polish","Punjabi","Romanian","Russian","Scots",
       "Serbian","Sinhalese","Slavic","Slovak","Somali","Sundanese","Swahili","Swedish","Tagalog","Taiwanese",
-      "Tamil","Telugu","Teochew","Thai","Turkish","Ukrainian","Urdu","Uyghur","Vietnamese","Other"];
-    const SERVICE_TYPES = ["[CI] Interpret a call (industry discussion)",
+      "Tamil","Telugu","Teochew","Thai","Turkish","Ukrainian","Urdu","Uyghur","Vietnamese","Other"
+    ];
+
+    const SERVICE_TYPES = [
+      "[CI] Interpret a call (industry discussion)",
       "[CI] Interpret a call (IR / management team)",
       "[CI] Interpret an on-site meeting",
       "[SI] Interpret a call (industry discussion)",
@@ -111,10 +121,13 @@
       "[FGD] Moderate a call",
       "Briefing - Moderation",
       "Briefing - Interpretation",
-      "[Other] Bespoke services"];
+      "[Other] Bespoke services"
+    ];
 
+    // ======= DOM =======
     const $ = id => document.getElementById(id);
     const el = {
+      form: $("woForm"),
       subject: $("subject"),
       frontId: $("frontId"),
       clientEmail: $("clientEmail"),
@@ -123,7 +136,7 @@
       srcLang: $("srcLang"),
       tgtLang: $("tgtLang"),
       description: $("description"),
-      send: $("send"),
+      conversationUrl: $("conversationUrl"),
       status: $("status"),
     };
 
@@ -139,37 +152,41 @@
     fillSelects();
 
     let ctxCache = null;
-   Front.contextUpdates.subscribe(async (ctx) => {
-  ctxCache = ctx;
-  if (ctx?.type !== "singleConversation" || !ctx.conversation) {
-    el.status.textContent = "Open a conversation to use the form.";
-    return;
-  }
 
-  // Set FrontID (read-only)
-  el.frontId.value = ctx.conversation.id;
+    // ======= Front Context =======
+    Front.contextUpdates.subscribe(async (ctx) => {
+      ctxCache = ctx;
 
-  // Prefill Subject if empty
-  if (!el.subject.value && ctx.conversation.subject) {
-    el.subject.value = ctx.conversation.subject;
-  }
-
-  // Prefill Client email from very first sender in thread
-  try {
-    const page = await ctx.listMessages();
-    const msgs = page?.results || [];
-    const firstInbound = msgs.find(m => m.direction === "inbound" && m.author?.handle);
-    if (firstInbound?.author?.handle && firstInbound.author.handle.includes("@")) {
-      if (!el.clientEmail.value) {
-        el.clientEmail.value = firstInbound.author.handle;
+      if (ctx?.type !== "singleConversation" || !ctx.conversation) {
+        el.status.textContent = "Open a conversation to use the form.";
+        return;
       }
-    }
-  } catch (e) { /* ignore */ }
 
-  el.status.textContent = "Context loaded.";
-});
+      // Front conversation id + deep link
+      el.frontId.value = ctx.conversation.id;
+      el.conversationUrl.value = `https://app.frontapp.com/open/c/${ctx.conversation.id}`;
 
+      // Prefill Subject if empty
+      if (!el.subject.value && ctx.conversation.subject) {
+        el.subject.value = ctx.conversation.subject;
+      }
 
+      // Prefill Client email from very first sender in the thread (oldest inbound)
+      try {
+        const page = await ctx.listMessages();
+        const msgs = page?.results || [];
+        const firstInbound = msgs.find(m => m.direction === "inbound" && m.author?.handle);
+        if (firstInbound?.author?.handle && firstInbound.author.handle.includes("@")) {
+          if (!el.clientEmail.value) {
+            el.clientEmail.value = firstInbound.author.handle;
+          }
+        }
+      } catch (e) { /* ignore */ }
+
+      el.status.textContent = "Context loaded.";
+    });
+
+    // ======= Validation =======
     function validate() {
       if (!ZAP_URL.startsWith("https://hooks.zapier.com/")) return "Set your Zapier URL in the code.";
       if (!el.subject.value.trim()) return "Subject is required.";
@@ -181,21 +198,23 @@
       return null;
     }
 
-    el.send.addEventListener("click", async () => {
+    // ======= Submit: POST all fields as body (x-www-form-urlencoded) =======
+    el.form.addEventListener("submit", async (evt) => {
+      evt.preventDefault();
+
       const err = validate();
       if (err) { el.status.textContent = err; el.status.className = "err"; return; }
 
-      const payload = {
-        subject: el.subject.value.trim(),
-        front_id: el.frontId.value || null,
-        conversation_url: el.frontId.value ? `https://app.frontapp.com/open/c/${el.frontId.value}` : null,
-        client_email: el.clientEmail.value.trim(),
-        datetime_local: el.datetime.value,
-        service_type: el.serviceType.value,
-        source_language: el.srcLang.value,
-        target_language: el.tgtLang.value,
-        description: el.description.value.trim()
-      };
+      // Collect ALL form fields automatically
+      const formData = new FormData(el.form);
+
+      // Optional: trim common fields before sending
+      formData.set("subject", (formData.get("subject") || "").toString().trim());
+      formData.set("client_email", (formData.get("client_email") || "").toString().trim());
+      formData.set("description", (formData.get("description") || "").toString().trim());
+
+      // Convert to URL-encoded body so Zapier sees keys in request.data
+      const body = new URLSearchParams(formData);
 
       el.status.textContent = "Sending…";
       el.status.className = "";
@@ -203,14 +222,22 @@
       try {
         const res = await fetch(ZAP_URL, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
+          headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+          body
         });
-        if (!res.ok) throw new Error("Non-200 from Zapier");
+
+        const text = await res.text().catch(() => "");
+        if (!res.ok) {
+          el.status.textContent = `Submit failed: HTTP ${res.status} ${res.statusText}${text ? " — " + text : ""}`;
+          el.status.className = "err";
+          return;
+        }
+
         el.status.textContent = "Submitted successfully. Your WorkOrder flow should continue.";
         el.status.className = "ok";
+        // Optional: el.form.reset();
       } catch (e) {
-        el.status.textContent = "Failed to submit. Check your network and Zap URL.";
+        el.status.textContent = `Network/CORS error: ${e?.message || e}`;
         el.status.className = "err";
       }
     });
