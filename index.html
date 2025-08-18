@@ -1,0 +1,260 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>WorkOrder Request</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { --gap:10px; }
+    body { font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial; margin:0; padding:12px; }
+    h2 { margin:0 0 10px; }
+    .row { display:grid; grid-template-columns: 160px 1fr; gap:var(--gap); align-items:center; margin-bottom:10px; }
+    .row-full { display:block; margin-bottom:10px; }
+    label { font-weight:600; }
+    input, select, textarea, button { width:100%; padding:8px; box-sizing:border-box; }
+    input[readonly] { background:#f3f4f6; }
+    textarea { min-height:120px; }
+    small { color:#6b7280; display:block; margin-top:4px; }
+    .btns { display:flex; gap:8px; margin-top:8px; }
+    button { border:0; border-radius:8px; cursor:pointer; }
+    .ghost { background:#f3f4f6; }
+    .primary { background:#2563eb; color:white; }
+    #status { font-size:12px; color:#6b7280; margin-top:8px; }
+    .ok { color:#065f46 !important; }
+    .err { color:#7f1d1d !important; }
+  </style>
+</head>
+<body>
+  <h2>Create WorkOrder</h2>
+
+  <div class="row">
+    <label for="subject">Subject</label>
+    <div>
+      <input id="subject" type="text" placeholder='e.g., "Medical devices in China", "Breweries in Colombia"' required />
+      <small>Topic of the call. Examples: “Medical devices in China”, “Breweries in Colombia”.</small>
+    </div>
+  </div>
+
+  <div class="row">
+    <label for="frontId">FrontID</label>
+    <input id="frontId" type="text" readonly />
+  </div>
+
+  <div class="row">
+    <label for="clientEmail">Client’s email</label>
+    <input id="clientEmail" type="email" placeholder="name@company.com" required />
+  </div>
+
+  <div class="row">
+    <label for="datetime">Date & Time booking</label>
+    <input id="datetime" type="datetime-local" required />
+  </div>
+
+  <!-- NEW: Service Type -->
+  <div class="row">
+    <label for="serviceType">Service Type</label>
+    <select id="serviceType" required></select>
+  </div>
+
+  <div class="row">
+    <label for="srcLang">Source Language</label>
+    <select id="srcLang" required></select>
+  </div>
+
+  <div class="row">
+    <label for="tgtLang">Target Language</label>
+    <select id="tgtLang" required></select>
+  </div>
+
+  <div class="row-full">
+    <label for="description">Description</label>
+    <textarea id="description" placeholder="Add job context, materials, and any special instructions…"></textarea>
+    <small>Use this area to provide details the linguist needs: context, objectives, participants, materials/links, and any non-obvious requirements.</small>
+  </div>
+
+  <div class="btns">
+    <button id="pull" class="ghost" type="button">Pull from email</button>
+    <button id="send" class="primary" type="button">Send to Zapier</button>
+  </div>
+
+  <div id="status">Waiting for conversation…</div>
+
+  <!-- Front Plugin SDK -->
+  <script src="https://dl.frontapp.com/libs/plugin-sdk-1.8.1.min.js"></script>
+  <script>
+    // ======= CONFIG: set your Zapier Catch Hook URL here =======
+    const ZAP_URL = "https://hooks.zapier.com/hooks/catch/XXXXXXX/XXXXXXX/"; // <-- replace
+
+    // ======= Language options (shared by both dropdowns) =======
+    const LANGUAGES = [
+      "Mandarin","Japanese","Korean","French","Spanish","Portuguese","German","EU Portuguese","EU French","EU Spanish",
+      "Afrikaans","Amazigh","Amharic","Arabic","Asturian","Azerbaijani","Bahasa Indonesia","Balinese","Basque","Brazilian Portuguese",
+      "Bengali","Bosnian","Bulgarian","Burmese","Canadian French","Cantonese","Catalan","Creole","Croatian","Czech",
+      "Danish","Dari","Dutch","Esperanto","Estonian","Farsi","Finnish","Flemish","Georgian","Greek",
+      "Gujarati","Hakka","Hebrew","Hindi","Hmong","Hokkien","Hungarian","Italian","Javanese","Kannada",
+      "Khmer","Kurdish","Latin American Spanish","Lao","Lithuanian","Macedonian","Malay","Chinese (Hongkong)","Marathi","Marshallese",
+      "Mongolian","Nepalese","Norwegian","Pashto","Persian","Polish","Punjabi","Romanian","Russian","Scots",
+      "Serbian","Sinhalese","Slavic","Slovak","Somali","Sundanese","Swahili","Swedish","Tagalog","Taiwanese",
+      "Tamil","Telugu","Teochew","Thai","Turkish","Ukrainian","Urdu","Uyghur","Vietnamese","Other"
+    ];
+
+    // ======= NEW: Service Type options =======
+    const SERVICE_TYPES = [
+      "[CI] Interpret a call (industry discussion)",
+      "[CI] Interpret a call (IR / management team)",
+      "[CI] Interpret an on-site meeting",
+      "[SI] Interpret a call (industry discussion)",
+      "[SI] Interpret a call (IR / management team)",
+      "[SI] Interpret an on-site meeting",
+      "[SI] Interpret a call solo (industry discussion)",
+      "[SI] Interpret a call solo (IR / management team)",
+      "[SI] Interpret an on-site meeting solo",
+      "Translate a document",
+      "Translate a survey",
+      "HITL",
+      "HITL Lite",
+      "Machine",
+      "HITL Verbatim",
+      "[IDI] Moderate a call",
+      "[FGD] Moderate a call",
+      "Briefing - Moderation",
+      "Briefing - Interpretation",
+      "[Other] Bespoke services"
+    ];
+
+    // ======= DOM helpers =======
+    const $ = id => document.getElementById(id);
+    const el = {
+      subject: $("subject"),
+      frontId: $("frontId"),
+      clientEmail: $("clientEmail"),
+      datetime: $("datetime"),
+      serviceType: $("serviceType"), // NEW
+      srcLang: $("srcLang"),
+      tgtLang: $("tgtLang"),
+      description: $("description"),
+      pull: $("pull"),
+      send: $("send"),
+      status: $("status"),
+    };
+
+    function buildSelectOptions(list) {
+      return '<option value="" disabled selected>Select…</option>' +
+        list.map(v => `<option value="${v}">${v}</option>`).join("");
+    }
+
+    function fillSelects() {
+      el.srcLang.innerHTML = buildSelectOptions(LANGUAGES);
+      el.tgtLang.innerHTML = buildSelectOptions(LANGUAGES);
+      el.serviceType.innerHTML = buildSelectOptions(SERVICE_TYPES); // NEW
+    }
+    fillSelects();
+
+    let ctxCache = null;
+
+    // Subscribe to Front context changes
+    Front.contextUpdates.subscribe(async (ctx) => {
+      ctxCache = ctx;
+
+      if (ctx?.type !== "singleConversation" || !ctx.conversation) {
+        el.status.textContent = "Open a conversation to use the form.";
+        return;
+      }
+      // Set FrontID (read-only)
+      el.frontId.value = ctx.conversation.id;
+
+      // Prefill Subject if empty
+      if (!el.subject.value && ctx.conversation.subject) {
+        el.subject.value = ctx.conversation.subject;
+      }
+
+      // Try to prefill Client email from sender
+      try {
+        const recips = await ctx.listRecipients?.();
+        const sender = recips?.results?.find(r => r.role === "sender") || recips?.results?.[0];
+        const maybeEmail = sender?.handle || "";
+        if (!el.clientEmail.value && maybeEmail.includes("@")) {
+          el.clientEmail.value = maybeEmail;
+        }
+      } catch (e) { /* ignore */ }
+
+      el.status.textContent = "Context loaded. You can also click ‘Pull from email’.";
+    });
+
+    // Pull the latest inbound message body as Description and refresh Subject
+    el.pull.addEventListener("click", async () => {
+      try {
+        if (!ctxCache || ctxCache.type !== "singleConversation") throw new Error("No open conversation");
+
+        // Refresh subject if still empty
+        if (!el.subject.value && ctxCache.conversation?.subject) {
+          el.subject.value = ctxCache.conversation.subject;
+        }
+
+        const page = await ctxCache.listMessages();
+        const msgs = page?.results || [];
+        const latest = [...msgs].reverse().find(m => m.status === "inbound" && m.content?.body) || msgs[msgs.length-1];
+
+        if (latest?.content?.body) {
+          const body = latest.content.type === "html"
+            ? latest.content.body.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
+            : String(latest.content.body).trim();
+          if (!el.description.value) el.description.value = body;
+        }
+
+        el.status.textContent = "Pulled from email. Review and edit before sending.";
+        el.status.className = "ok";
+      } catch (err) {
+        el.status.textContent = "Couldn’t read the email body. Open/scroll the message then try again.";
+        el.status.className = "err";
+      }
+    });
+
+    function validate() {
+      if (!ZAP_URL.startsWith("https://hooks.zapier.com/")) return "Set your Zapier URL in the code.";
+      if (!el.subject.value.trim()) return "Subject is required.";
+      if (!el.clientEmail.value.trim()) return "Client’s email is required.";
+      if (!el.datetime.value.trim()) return "Date & time is required.";
+      if (!el.serviceType.value) return "Service Type is required."; // NEW
+      if (!el.srcLang.value) return "Source Language is required.";
+      if (!el.tgtLang.value) return "Target Language is required.";
+      return null;
+    }
+
+    el.send.addEventListener("click", async () => {
+      const err = validate();
+      if (err) { el.status.textContent = err; el.status.className = "err"; return; }
+
+      // Compose payload (include a deep link to the conversation)
+      const payload = {
+        subject: el.subject.value.trim(),
+        front_id: el.frontId.value || null,
+        conversation_url: el.frontId.value ? `https://app.frontapp.com/open/c/${el.frontId.value}` : null,
+        client_email: el.clientEmail.value.trim(),
+        datetime_local: el.datetime.value, // local time; parse/convert in Zapier if needed
+        service_type: el.serviceType.value, // NEW
+        source_language: el.srcLang.value,
+        target_language: el.tgtLang.value,
+        description: el.description.value.trim()
+      };
+
+      el.status.textContent = "Sending…";
+      el.status.className = "";
+
+      try {
+        const res = await fetch(ZAP_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error("Non-200 from Zapier");
+        el.status.textContent = "Sent to Zapier. Your WorkOrder flow should continue.";
+        el.status.className = "ok";
+      } catch (e) {
+        el.status.textContent = "Failed to send. Check your network and Zap URL.";
+        el.status.className = "err";
+      }
+    });
+  </script>
+</body>
+</html>
