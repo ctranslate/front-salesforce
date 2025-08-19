@@ -24,7 +24,7 @@
   </style>
 </head>
 <body>
-  <h2>Create Request in Salesforce</h2>
+  <h2>Create WorkOrder</h2>
 
   <div class="row">
     <label for="subject">Subject</label>
@@ -41,11 +41,8 @@
 
   <div class="row">
     <label for="clientEmail">Client’s email</label>
-    <div>
-      <input id="clientEmail" type="email" placeholder="please make sure the contact is available in Salesforce" required />
-      <!-- NEW: hint showing detected first sender -->
-      <small id="clientEmailHint" style="display:none;"></small>
-    </div>
+    <input id="clientEmail" type="email" placeholder="name@company.com" required />
+    <small>Please make sure teh contact is available in Salesforce.</small>
   </div>
 
   <div class="row">
@@ -53,7 +50,6 @@
     <input id="datetime" type="datetime-local" required />
   </div>
 
-  <!-- NEW: Service Type -->
   <div class="row">
     <label for="serviceType">Service Type</label>
     <select id="serviceType" required></select>
@@ -123,7 +119,6 @@
       subject: $("subject"),
       frontId: $("frontId"),
       clientEmail: $("clientEmail"),
-      clientEmailHint: $("clientEmailHint"),
       datetime: $("datetime"),
       serviceType: $("serviceType"),
       srcLang: $("srcLang"),
@@ -143,68 +138,67 @@
       el.serviceType.innerHTML = buildSelectOptions(SERVICE_TYPES);
     }
     fillSelects();
-    let submitter = { name: "", email: "" };
 
-    // Helper to extract the earliest inbound sender email robustly
-    async function detectFirstSenderEmail(ctx) {
-      try {
-        const page = await ctx.listMessages?.();
-        const msgs = page?.results || [];
+    // ——— submitter info (Front teammate using the plugin)
+    let submitter = { name: "", email: "", timezone: "" };
 
-        // Find earliest inbound by timestamp if available
-        const ts = m => m.created_at ?? m.received_at ?? m.date ?? 0;
-        const inbound = msgs.filter(m =>
-          (m.direction === "inbound" || m.status === "inbound") &&
-          (m.author?.handle || m.recipient?.handle)
-        ).sort((a,b) => ts(a) - ts(b));
+    // Helper: format 'YYYY-MM-DDTHH:mm' → 'YYYY-MM-DDTHH:mm:00.000±HH:MM' using the submitter's local tz at that time
+    function formatLocalDateTimeWithTZ(localStr) {
+      if (!localStr) return "";
+      const [datePart, timePartRaw = "00:00"] = localStr.split("T");
+      let [hh = "00", mm = "00", ss = "00"] = timePartRaw.split(":");
+      if (!ss) ss = "00";
 
-        const emailFromMsgs = inbound[0]?.author?.handle || inbound[0]?.recipient?.handle;
+      const [Y, M, D] = datePart.split("-").map(n => parseInt(n, 10));
+      const d = new Date(Y, (M - 1), D, parseInt(hh,10), parseInt(mm,10), parseInt(ss,10), 0);
+      // minutes east of UTC (e.g., UTC+8 => +480)
+      const tzMinutes = -d.getTimezoneOffset();
+      const sign = tzMinutes >= 0 ? "+" : "-";
+      const pad2 = v => String(Math.abs(v)).padStart(2, "0");
+      const offH = pad2(Math.trunc(Math.abs(tzMinutes) / 60));
+      const offM = pad2(Math.abs(tzMinutes) % 60);
 
-        if (emailFromMsgs && emailFromMsgs.includes("@")) return emailFromMsgs;
-
-        // Fallback: recipients list (pick first sender role or first entry)
-        const recips = await ctx.listRecipients?.();
-        const firstSender = recips?.results?.find(r => r.role === "sender") || recips?.results?.[0];
-        const emailFromRecips = firstSender?.handle;
-        if (emailFromRecips && emailFromRecips.includes("@")) return emailFromRecips;
-
-        return null;
-      } catch (e) {
-        return null;
-      }
+      const base = `${datePart}T${pad2(hh)}:${pad2(mm)}:${pad2(ss)}.000`;
+      return `${base}${sign}${offH}:${offM}`;
     }
 
     let ctxCache = null;
     Front.contextUpdates.subscribe(async (ctx) => {
       ctxCache = ctx;
+
+      // Who is submitting (current teammate)
       submitter.name = ctx?.teammate?.name || "";
-submitter.email = ctx?.teammate?.email || "";
+      submitter.email = ctx?.teammate?.email || "";
+      submitter.timezone = ctx?.teammate?.timezone || (Intl.DateTimeFormat().resolvedOptions().timeZone || "");
 
       if (ctx?.type !== "singleConversation" || !ctx.conversation) {
         el.status.textContent = "Open a conversation to use the form.";
         return;
       }
 
-      // Set FrontID (read-only)
+      // Front conversation id
       el.frontId.value = ctx.conversation.id;
 
-      // Prefill Subject if empty
+      // Subject
       if (!el.subject.value && ctx.conversation.subject) {
         el.subject.value = ctx.conversation.subject;
       }
 
-      // NEW: Auto-detect first sender email, fill field if empty, and show hint
-      const detected = await detectFirstSenderEmail(ctx);
-      if (detected && !el.clientEmail.value) {
-        el.clientEmail.value = detected;
-      }
-      if (detected) {
-        el.clientEmailHint.textContent = `Auto-detected first sender: ${detected}. Please make sure the contact is available in Salesforce`;
-        el.clientEmailHint.style.display = "block";
-      } else {
-        el.clientEmailHint.textContent = "";
-        el.clientEmailHint.style.display = "none";
-      }
+      // Client email: earliest inbound sender
+      try {
+        const page = await ctx.listMessages();
+        const msgs = page?.results || [];
+        const ts = m => m.created_at ?? m.received_at ?? m.date ?? 0;
+        const inbound = msgs.filter(m =>
+          (m.direction === "inbound" || m.status === "inbound") &&
+          (m.author?.handle || m.recipient?.handle)
+        ).sort((a,b) => ts(a) - ts(b));
+
+        const detected = inbound[0]?.author?.handle || inbound[0]?.recipient?.handle;
+        if (detected && detected.includes("@") && !el.clientEmail.value) {
+          el.clientEmail.value = detected;
+        }
+      } catch (_) {}
 
       el.status.textContent = "Context loaded.";
     });
@@ -219,45 +213,30 @@ submitter.email = ctx?.teammate?.email || "";
       if (!el.tgtLang.value) return "Target Language is required.";
       return null;
     }
-    // Formats "YYYY-MM-DDTHH:MM" -> "YYYY-MM-DDTHH:MM:00.000±HH:MM" using the submitter's local tz
-function formatLocalDateTimeWithTZ(localStr) {
-  if (!localStr) return "";
-  const [datePart, timePartRaw = "00:00"] = localStr.split("T");
-  let [hh = "00", mm = "00", ss = "00"] = timePartRaw.split(":");
-  if (!ss) ss = "00";
-  const [Y, M, D] = datePart.split("-").map(Number);
-  const d = new Date(Y, M - 1, D, Number(hh), Number(mm), Number(ss), 0);
-
-  const tzMinutes = -d.getTimezoneOffset(); // e.g. +480 for UTC+8
-  const sign = tzMinutes >= 0 ? "+" : "-";
-  const pad2 = v => String(Math.abs(v)).padStart(2, "0");
-  const offH = pad2(Math.trunc(Math.abs(tzMinutes) / 60));
-  const offM = pad2(Math.abs(tzMinutes) % 60);
-
-  return `${datePart}T${pad2(hh)}:${pad2(mm)}:${pad2(ss)}.000${sign}${offH}:${offM}`;
-}
-
 
     // Submit handler (posts all fields as x-www-form-urlencoded)
     el.send.addEventListener("click", async () => {
       const err = validate();
       if (err) { el.status.textContent = err; el.status.className = "err"; return; }
 
+      // Format datetime with submitter's offset (e.g., 2023-07-03T14:30:00.000+08:00)
+      const datetimeWithTZ = formatLocalDateTimeWithTZ(el.datetime.value);
+
       const body = new URLSearchParams();
       body.set("subject", el.subject.value.trim());
       body.set("front_id", el.frontId.value || "");
       if (el.frontId.value) body.set("conversation_url", `https://app.frontapp.com/open/c/${el.frontId.value}`);
       body.set("client_email", el.clientEmail.value.trim());
-      const datetimeWithTZ = formatLocalDateTimeWithTZ(el.datetime.value);
-body.set("datetime_local", datetimeWithTZ);
-);
+      body.set("datetime_local", datetimeWithTZ); // <-- formatted with offset
       body.set("service_type", el.serviceType.value);
       body.set("source_language", el.srcLang.value);
       body.set("target_language", el.tgtLang.value);
-      body.set("submitter_name", submitter.name);
-body.set("submitter_email", submitter.email);
-    body.set("submitter_timezone", Intl.DateTimeFormat().resolvedOptions().timeZone || "");
       body.set("description", el.description.value.trim());
+
+      // Submitter info
+      body.set("submitter_name", submitter.name);
+      body.set("submitter_email", submitter.email);
+      body.set("submitter_timezone", submitter.timezone); // IANA, e.g., "Asia/Singapore"
 
       el.status.textContent = "Sending…";
       el.status.className = "";
@@ -268,13 +247,14 @@ body.set("submitter_email", submitter.email);
           headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
           body
         });
+
         const text = await res.text().catch(() => "");
         if (!res.ok) {
           el.status.textContent = `Submit failed: HTTP ${res.status} ${res.statusText}${text ? " — " + text : ""}`;
           el.status.className = "err";
           return;
         }
-        el.status.textContent = "Submitted successfully. Your request should be created in Salesforce. You can check the internal comment in this thread.";
+        el.status.textContent = "Submitted successfully. Please check the update on the internal comment of this thread.";
         el.status.className = "ok";
       } catch (e) {
         el.status.textContent = `Network/CORS error: ${e?.message || e}`;
