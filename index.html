@@ -84,7 +84,7 @@
   <!-- Front Plugin SDK -->
   <script src="https://dl.frontapp.com/libs/plugin-sdk-1.8.1.min.js"></script>
   <script>
-    const ZAP_URL = "https://hooks.zapier.com/hooks/catch/9441479/u6lrbqp/";
+    const ZAP_URL = "https://hooks.zapier.com/hooks/catch/9441479/uthb9na/";
 
     // Fixed quotes on "English"
     const LANGUAGES = ["English","Mandarin","Japanese","Korean","French","Spanish","Portuguese","German","EU Portuguese","EU French","EU Spanish",
@@ -143,6 +143,7 @@
       el.serviceType.innerHTML = buildSelectOptions(SERVICE_TYPES);
     }
     fillSelects();
+    let submitter = { name: "", email: "" };
 
     // Helper to extract the earliest inbound sender email robustly
     async function detectFirstSenderEmail(ctx) {
@@ -176,6 +177,9 @@
     let ctxCache = null;
     Front.contextUpdates.subscribe(async (ctx) => {
       ctxCache = ctx;
+      submitter.name = ctx?.teammate?.name || "";
+submitter.email = ctx?.teammate?.email || "";
+
       if (ctx?.type !== "singleConversation" || !ctx.conversation) {
         el.status.textContent = "Open a conversation to use the form.";
         return;
@@ -230,6 +234,8 @@
       body.set("service_type", el.serviceType.value);
       body.set("source_language", el.srcLang.value);
       body.set("target_language", el.tgtLang.value);
+      body.set("submitter_name", submitter.name);
+body.set("submitter_email", submitter.email);
       body.set("description", el.description.value.trim());
 
       el.status.textContent = "Sending…";
