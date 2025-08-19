@@ -42,7 +42,7 @@
   <div class="row">
     <label for="clientEmail">Client’s email</label>
     <input id="clientEmail" type="email" placeholder="name@company.com" required />
-    <small>Please make sure teh contact is available in Salesforce.</small>
+    <small>Please make sure the contact is available in Salesforce.</small>
   </div>
 
   <div class="row">
@@ -163,6 +163,49 @@
     }
 
     let ctxCache = null;
+    async function detectFirstSenderEmail(ctx) {
+  // Try messages (oldest inbound first)
+  try {
+    const page = await ctx.listMessages?.();
+    const msgs = page?.results || [];
+
+    const parsed = msgs
+      .filter(m => (m.direction === "inbound" || m.status === "inbound"))
+      .map(m => {
+        const raw =
+          m.created_at || m.received_at || m.date || m.inserted_at || m.createdAt || "";
+        const t = Date.parse(raw);
+        return { m, t: Number.isFinite(t) ? t : Number.POSITIVE_INFINITY };
+      })
+      .sort((a, b) => a.t - b.t);
+
+    for (const { m } of parsed) {
+      const candidates = [
+        m.author?.handle,
+        m.sender?.handle,
+        m.recipient?.handle,
+        ...(Array.isArray(m.recipients) ? m.recipients.map(r => r?.handle) : []),
+      ].filter(Boolean);
+
+      const email = candidates.find(h => typeof h === "string" && h.includes("@"));
+      if (email) return email;
+    }
+  } catch { /* ignore */ }
+
+  // Fallback: participants list
+  try {
+    const recips = await ctx.listRecipients?.();
+    const arr = recips?.results || [];
+    const byRole = arr.find(r => r.role === "sender" && r.handle?.includes("@"));
+    if (byRole) return byRole.handle;
+
+    const anyExternal = arr.find(r => r.handle?.includes("@") && r.type !== "teammate");
+    if (anyExternal) return anyExternal.handle;
+  } catch { /* ignore */ }
+
+  return "";
+}
+
     Front.contextUpdates.subscribe(async (ctx) => {
       ctxCache = ctx;
 
@@ -184,21 +227,12 @@
         el.subject.value = ctx.conversation.subject;
       }
 
-      // Client email: earliest inbound sender
-      try {
-        const page = await ctx.listMessages();
-        const msgs = page?.results || [];
-        const ts = m => m.created_at ?? m.received_at ?? m.date ?? 0;
-        const inbound = msgs.filter(m =>
-          (m.direction === "inbound" || m.status === "inbound") &&
-          (m.author?.handle || m.recipient?.handle)
-        ).sort((a,b) => ts(a) - ts(b));
+      // Prefill Client email from first sender (robust)
+const detected = await detectFirstSenderEmail(ctx);
+if (detected && !el.clientEmail.value) {
+  el.clientEmail.value = detected;
+}
 
-        const detected = inbound[0]?.author?.handle || inbound[0]?.recipient?.handle;
-        if (detected && detected.includes("@") && !el.clientEmail.value) {
-          el.clientEmail.value = detected;
-        }
-      } catch (_) {}
 
       el.status.textContent = "Context loaded.";
     });
