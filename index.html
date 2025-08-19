@@ -199,7 +199,7 @@ submitter.email = ctx?.teammate?.email || "";
         el.clientEmail.value = detected;
       }
       if (detected) {
-        el.clientEmailHint.textContent = `Auto-detected first sender: ${detected}`;
+        el.clientEmailHint.textContent = `Auto-detected first sender: ${detected}. Please make sure the contact is available in Salesforce`;
         el.clientEmailHint.style.display = "block";
       } else {
         el.clientEmailHint.textContent = "";
@@ -219,6 +219,24 @@ submitter.email = ctx?.teammate?.email || "";
       if (!el.tgtLang.value) return "Target Language is required.";
       return null;
     }
+    // Formats "YYYY-MM-DDTHH:MM" -> "YYYY-MM-DDTHH:MM:00.000±HH:MM" using the submitter's local tz
+function formatLocalDateTimeWithTZ(localStr) {
+  if (!localStr) return "";
+  const [datePart, timePartRaw = "00:00"] = localStr.split("T");
+  let [hh = "00", mm = "00", ss = "00"] = timePartRaw.split(":");
+  if (!ss) ss = "00";
+  const [Y, M, D] = datePart.split("-").map(Number);
+  const d = new Date(Y, M - 1, D, Number(hh), Number(mm), Number(ss), 0);
+
+  const tzMinutes = -d.getTimezoneOffset(); // e.g. +480 for UTC+8
+  const sign = tzMinutes >= 0 ? "+" : "-";
+  const pad2 = v => String(Math.abs(v)).padStart(2, "0");
+  const offH = pad2(Math.trunc(Math.abs(tzMinutes) / 60));
+  const offM = pad2(Math.abs(tzMinutes) % 60);
+
+  return `${datePart}T${pad2(hh)}:${pad2(mm)}:${pad2(ss)}.000${sign}${offH}:${offM}`;
+}
+
 
     // Submit handler (posts all fields as x-www-form-urlencoded)
     el.send.addEventListener("click", async () => {
@@ -230,12 +248,15 @@ submitter.email = ctx?.teammate?.email || "";
       body.set("front_id", el.frontId.value || "");
       if (el.frontId.value) body.set("conversation_url", `https://app.frontapp.com/open/c/${el.frontId.value}`);
       body.set("client_email", el.clientEmail.value.trim());
-      body.set("datetime_local", el.datetime.value);
+      const datetimeWithTZ = formatLocalDateTimeWithTZ(el.datetime.value);
+body.set("datetime_local", datetimeWithTZ);
+);
       body.set("service_type", el.serviceType.value);
       body.set("source_language", el.srcLang.value);
       body.set("target_language", el.tgtLang.value);
       body.set("submitter_name", submitter.name);
 body.set("submitter_email", submitter.email);
+    body.set("submitter_timezone", Intl.DateTimeFormat().resolvedOptions().timeZone || "");
       body.set("description", el.description.value.trim());
 
       el.status.textContent = "Sending…";
@@ -253,7 +274,7 @@ body.set("submitter_email", submitter.email);
           el.status.className = "err";
           return;
         }
-        el.status.textContent = "Submitted successfully. Your WorkOrder flow should continue.";
+        el.status.textContent = "Submitted successfully. Your request should be created in Salesforce. You can check the internal comment in this thread.";
         el.status.className = "ok";
       } catch (e) {
         el.status.textContent = `Network/CORS error: ${e?.message || e}`;
