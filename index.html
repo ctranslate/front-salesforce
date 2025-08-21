@@ -24,7 +24,7 @@
   </style>
 </head>
 <body>
-  <h2>Create WorkOrder</h2>
+  <h2>Create Request in Salesforce</h2>
 
   <div class="row">
     <label for="subject">Subject</label>
@@ -115,6 +115,21 @@
       "Briefing - Interpretation",
       "[Other] Bespoke services"];
 
+    // === Exclude internal addresses from 'Client’s email' auto-fill ===
+const EXCLUDE_CLIENT_EMAILS = ["bookings@cadencetranslate.com"];
+
+function firstNonExcludedEmail(handles) {
+  const EXCLUDE = new Set(EXCLUDE_CLIENT_EMAILS.map(s => s.toLowerCase()));
+  for (const h of handles || []) {
+    if (typeof h !== "string") continue;
+    const email = h.trim();
+    if (email.includes("@") && !EXCLUDE.has(email.toLowerCase())) {
+      return email;
+    }
+  }
+  return "";
+}
+
     const $ = id => document.getElementById(id);
     const el = {
       subject: $("subject"),
@@ -164,7 +179,7 @@
     }
 
     let ctxCache = null;
-    async function detectFirstSenderEmail(ctx) {
+   async function detectFirstSenderEmail(ctx) {
   // Try messages (oldest inbound first)
   try {
     const page = await ctx.listMessages?.();
@@ -173,39 +188,43 @@
     const parsed = msgs
       .filter(m => (m.direction === "inbound" || m.status === "inbound"))
       .map(m => {
-        const raw =
-          m.created_at || m.received_at || m.date || m.inserted_at || m.createdAt || "";
+        const raw = m.created_at || m.received_at || m.date || m.inserted_at || m.createdAt || "";
         const t = Date.parse(raw);
         return { m, t: Number.isFinite(t) ? t : Number.POSITIVE_INFINITY };
       })
       .sort((a, b) => a.t - b.t);
 
     for (const { m } of parsed) {
+      // Gather possible From/To sources on the message
       const candidates = [
         m.author?.handle,
         m.sender?.handle,
         m.recipient?.handle,
         ...(Array.isArray(m.recipients) ? m.recipients.map(r => r?.handle) : []),
+        ...(Array.isArray(m.to) ? m.to.map(x => x?.handle || x?.address) : []),
+        ...(Array.isArray(m.cc) ? m.cc.map(x => x?.handle || x?.address) : []),
       ].filter(Boolean);
 
-      const email = candidates.find(h => typeof h === "string" && h.includes("@"));
+      const email = firstNonExcludedEmail(candidates);
       if (email) return email;
     }
   } catch { /* ignore */ }
 
-  // Fallback: participants list
+  // Fallback: conversation participants (exclude teammates and blocked address)
   try {
     const recips = await ctx.listRecipients?.();
     const arr = recips?.results || [];
-    const byRole = arr.find(r => r.role === "sender" && r.handle?.includes("@"));
-    if (byRole) return byRole.handle;
-
-    const anyExternal = arr.find(r => r.handle?.includes("@") && r.type !== "teammate");
-    if (anyExternal) return anyExternal.handle;
+    const email = firstNonExcludedEmail(
+      arr
+        .filter(r => r.handle?.includes("@") && r.type !== "teammate")
+        .map(r => r.handle)
+    );
+    if (email) return email;
   } catch { /* ignore */ }
 
   return "";
 }
+
 
     Front.contextUpdates.subscribe(async (ctx) => {
       ctxCache = ctx;
