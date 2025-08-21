@@ -158,25 +158,45 @@ function firstNonExcludedEmail(handles) {
     // ——— submitter info (Front teammate using the plugin)
     let submitter = { name: "", email: "", timezone: "" };
 
-    // Helper: format 'YYYY-MM-DDTHH:mm' → 'YYYY-MM-DDTHH:mm:00.000±HH:MM' using the submitter's local tz at that time
-    function formatLocalDateTimeWithTZ(localStr) {
-      if (!localStr) return "";
-      const [datePart, timePartRaw = "00:00"] = localStr.split("T");
-      let [hh = "00", mm = "00", ss = "00"] = timePartRaw.split(":");
-      if (!ss) ss = "00";
+    // Formats "YYYY-MM-DDTHH:MM" -> "YYYY-MM-DDTHH:MM:00.000±HH:MM" using a specific IANA timeZone
+function formatLocalDateTimeWithTZ(localStr, timeZone) {
+  if (!localStr) return "";
+  const [datePart, timePartRaw = "00:00"] = localStr.split("T");
+  let [hh = "00", mm = "00", ss = "00"] = timePartRaw.split(":");
+  if (!ss) ss = "00";
+  const [Y, M, D] = datePart.split("-").map(n => parseInt(n, 10));
+  const pad2 = v => String(v).padStart(2, "0");
 
-      const [Y, M, D] = datePart.split("-").map(n => parseInt(n, 10));
-      const d = new Date(Y, (M - 1), D, parseInt(hh,10), parseInt(mm,10), parseInt(ss,10), 0);
-      // minutes east of UTC (e.g., UTC+8 => +480)
-      const tzMinutes = -d.getTimezoneOffset();
-      const sign = tzMinutes >= 0 ? "+" : "-";
-      const pad2 = v => String(Math.abs(v)).padStart(2, "0");
-      const offH = pad2(Math.trunc(Math.abs(tzMinutes) / 60));
-      const offM = pad2(Math.abs(tzMinutes) % 60);
+  // Anchor at the same wall time in UTC, then ask Intl for the zone offset at that instant
+  const utcLike = new Date(Date.UTC(Y, M - 1, D, parseInt(hh,10), parseInt(mm,10), parseInt(ss,10), 0));
 
-      const base = `${datePart}T${pad2(hh)}:${pad2(mm)}:${pad2(ss)}.000`;
-      return `${base}${sign}${offH}:${offM}`;
-    }
+  let off = "";
+  try {
+    const dtf = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      timeZoneName: "shortOffset",
+      hour12: false,
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", second: "2-digit"
+    });
+    const parts = dtf.formatToParts(utcLike);
+    const tzName = parts.find(p => p.type === "timeZoneName")?.value || ""; // e.g., "GMT+7"
+    const m = tzName.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/);
+    if (m) off = `${m[1]}${String(m[2]).padStart(2,"0")}:${(m[3]||"00").padStart(2,"0")}`;
+  } catch (_) {}
+
+  // Fallback to browser offset if shortOffset unsupported
+  if (!off) {
+    const tzMinutes = -utcLike.getTimezoneOffset();
+    const sign = tzMinutes >= 0 ? "+" : "-";
+    const offH = pad2(Math.trunc(Math.abs(tzMinutes) / 60));
+    const offM = pad2(Math.abs(tzMinutes) % 60);
+    off = `${sign}${offH}:${offM}`;
+  }
+
+  return `${datePart}T${pad2(hh)}:${pad2(mm)}:${pad2(ss)}.000${off}`;
+}
+
 
     let ctxCache = null;
    async function detectFirstSenderEmail(ctx) {
@@ -274,7 +294,9 @@ if (detected && !el.clientEmail.value) {
       if (err) { el.status.textContent = err; el.status.className = "err"; return; }
 
       // Format datetime with submitter's offset (e.g., 2023-07-03T14:30:00.000+08:00)
-      const datetimeWithTZ = formatLocalDateTimeWithTZ(el.datetime.value);
+      const tz = submitter.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+const datetimeWithTZ = formatLocalDateTimeWithTZ(el.datetime.value, tz);
+
 
       const body = new URLSearchParams();
       body.set("subject", el.subject.value.trim());
@@ -308,7 +330,7 @@ if (detected && !el.clientEmail.value) {
           el.status.className = "err";
           return;
         }
-        el.status.textContent = "Submitted successfully. Please check the update on the internal comment of this thread.";
+        el.status.textContent = "Submitted successfully. Please review the internal comment in this thread and verify that all request details in Salesforce are correct.";
         el.status.className = "ok";
       } catch (e) {
         el.status.textContent = `Network/CORS error: ${e?.message || e}`;
