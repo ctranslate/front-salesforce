@@ -115,20 +115,37 @@
       "Briefing - Interpretation",
       "[Other] Bespoke services"];
 
+    // Exclude any addresses under these domains (e.g., all @cadencetranslate.com)
+const EXCLUDE_CLIENT_DOMAINS = ["cadencetranslate.com"];
+
+
     // === Exclude internal addresses from 'Client’s email' auto-fill ===
 const EXCLUDE_CLIENT_EMAILS = ["bookings@cadencetranslate.com"];
 
 function firstNonExcludedEmail(handles) {
   const EXCLUDE = new Set(EXCLUDE_CLIENT_EMAILS.map(s => s.toLowerCase()));
+  const EXCLUDE_DOMAINS = new Set(EXCLUDE_CLIENT_DOMAINS.map(s => s.toLowerCase()));
+
+  const extractEmail = (s) => {
+    if (typeof s !== "string") return "";
+    // Supports plain emails or "Name <email@domain>"
+    const m = s.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+    return m ? m[0].toLowerCase().trim() : "";
+  };
+
   for (const h of handles || []) {
-    if (typeof h !== "string") continue;
-    const email = h.trim();
-    if (email.includes("@") && !EXCLUDE.has(email.toLowerCase())) {
-      return email;
-    }
+    const email = extractEmail(h);
+    if (!email) continue;
+
+    if (EXCLUDE.has(email)) continue; // exact-address exclude
+    const domain = email.split("@")[1];
+    if (EXCLUDE_DOMAINS.has(domain)) continue; // domain-wide exclude
+
+    return email; // first non-excluded email wins
   }
   return "";
 }
+
 
     const $ = id => document.getElementById(id);
     const el = {
