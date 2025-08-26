@@ -40,13 +40,13 @@
   </div>
 
   <div class="row">
-    <label for="clientEmail">Client’s email</label>
+    <label for="clientEmail">Client’s Email</label>
     <input id="clientEmail" type="email" placeholder="name@company.com" required />
     <small>Please make sure the contact is available in Salesforce.</small>
   </div>
 
   <div class="row">
-    <label for="datetime">Date & Time booking</label>
+    <label for="datetime">Date & Time Booking</label>
     <input id="datetime" type="datetime-local" required />
      <small>Enter the job date and time (using your system’s timezone).</small>
   </div>
@@ -65,6 +65,24 @@
     <label for="tgtLang">Target Language</label>
     <select id="tgtLang" required></select>
   </div>
+
+<div class="row">
+  <label for="projectCode">Project Code</label>
+  <input id="projectCode" type="text"/>
+</div>
+
+<div class="row">
+  <label for="dialIn">Dial-in</label>
+  <input id="dialIn" type="text" />
+   <small>Zoom/Teams link or phone number.</small>
+</div>
+
+<div class="row">
+  <label for="prepMaterials">Prep Materials</label>
+  <input id="prepMaterials" type="text"/>
+   <small>Discussion questions or materials.</small>
+</div>
+
 
   <div class="row-full">
     <label for="description">Description</label>
@@ -159,6 +177,10 @@ function firstNonExcludedEmail(handles) {
       description: $("description"),
       send: $("send"),
       status: $("status"),
+      projectCode: $("projectCode"),
+      dialIn: $("dialIn"),
+      prepMaterials: $("prepMaterials"),
+
     };
 
     function buildSelectOptions(list) {
@@ -325,11 +347,13 @@ const datetimeWithTZ = formatLocalDateTimeWithTZ(el.datetime.value, tz);
       body.set("source_language", el.srcLang.value);
       body.set("target_language", el.tgtLang.value);
       body.set("description", el.description.value.trim());
-
-      // Submitter info
       body.set("submitter_name", submitter.name);
       body.set("submitter_email", submitter.email);
-      body.set("submitter_timezone", submitter.timezone); // IANA, e.g., "Asia/Singapore"
+      body.set("submitter_timezone", submitter.timezone); // IANA, e.g., "Asia/Singapore";
+      body.set("project_code", el.projectCode.value.trim());
+      body.set("dial_in", el.dialIn.value.trim());
+      body.set("prep_materials", el.prepMaterials.value.trim())
+
 
       el.status.textContent = "Sending…";
       el.status.className = "";
