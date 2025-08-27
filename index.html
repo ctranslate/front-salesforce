@@ -27,6 +27,11 @@
   <h2>Create Request in Salesforce</h2>
 
   <div class="row">
+  <label for="projectCode">Project Code</label>
+  <input id="projectCode" type="text"/>
+</div>
+  
+  <div class="row">
     <label for="subject">Subject</label>
     <div>
       <input id="subject" type="text" placeholder='e.g., "Medical devices in China", "Breweries in Colombia"' required />
@@ -66,10 +71,11 @@
     <select id="tgtLang" required></select>
   </div>
 
-<div class="row">
-  <label for="projectCode">Project Code</label>
-  <input id="projectCode" type="text"/>
-</div>
+  <div class="row-full">
+    <label for="description">Description</label>
+    <textarea id="description" placeholder="Add job context and any special details"></textarea>
+    <small>Use this area to provide more details about the job.</small>
+  </div>
 
 <div class="row-full">
   <label for="dialIn">Dial-in</label>
@@ -84,12 +90,6 @@
   <small>Discussion questions or materials.</small>
 </div>
 
-
-  <div class="row-full">
-    <label for="description">Description</label>
-    <textarea id="description" placeholder="Add job context and any special details"></textarea>
-    <small>Use this area to provide more details about the job.</small>
-  </div>
 
   <div class="btns">
     <button id="send" class="primary" type="button">Submit</button>
