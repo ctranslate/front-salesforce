@@ -164,6 +164,12 @@ function firstNonExcludedEmail(handles) {
   }
   return "";
 }
+// Helper: strictly extract a single email from a string
+function extractEmailStrict(s) {
+  if (typeof s !== "string") return "";
+  const m = s.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+  return m ? m[0].toLowerCase().trim() : "";
+}
 
 
     const $ = id => document.getElementById(id);
@@ -238,45 +244,63 @@ function formatLocalDateTimeWithTZ(localStr, timeZone) {
 }
 
 
-    let ctxCache = null;
-   async function detectFirstSenderEmail(ctx) {
-  // Try messages (oldest inbound first)
+   let ctxCache = null;
+async function detectFirstSenderEmail(ctx) {
   try {
     const page = await ctx.listMessages?.();
-    const msgs = page?.results || [];
-
-    const parsed = msgs
+    const msgs = (page?.results || [])
       .filter(m => (m.direction === "inbound" || m.status === "inbound"))
       .map(m => {
         const raw = m.created_at || m.received_at || m.date || m.inserted_at || m.createdAt || "";
         const t = Date.parse(raw);
         return { m, t: Number.isFinite(t) ? t : Number.POSITIVE_INFINITY };
       })
-      .sort((a, b) => a.t - b.t);
+      .sort((a, b) => a.t - b.t); // oldest inbound first
 
-    for (const { m } of parsed) {
-      // Gather possible From/To sources on the message
-      const candidates = [
-        m.author?.handle,
-        m.sender?.handle,
-        m.recipient?.handle,
-        ...(Array.isArray(m.recipients) ? m.recipients.map(r => r?.handle) : []),
-        ...(Array.isArray(m.to) ? m.to.map(x => x?.handle || x?.address) : []),
-        ...(Array.isArray(m.cc) ? m.cc.map(x => x?.handle || x?.address) : []),
-      ].filter(Boolean);
+    for (const { m } of msgs) {
+      // 1) Strong signals of the true sender
+      let cand =
+        extractEmailStrict(m.sender?.handle) ||
+        extractEmailStrict(m.author?.handle);
 
-      const email = firstNonExcludedEmail(candidates);
-      if (email) return email;
+      // 2) Mail headers: From / Reply-To (for forwarded/parsed cases)
+      if (!cand) {
+        const H = m.headers || {};
+        cand =
+          extractEmailStrict(H["From"]) ||
+          extractEmailStrict(H["Reply-To"]) ||
+          extractEmailStrict(H["Return-Path"]) ||
+          "";
+      }
+
+      // 3) Fallback: only recipients explicitly marked as sender
+      if (!cand && Array.isArray(m.recipients)) {
+        for (const r of m.recipients) {
+          if ((r.role === "from" || r.kind === "from") && r.handle) {
+            cand = extractEmailStrict(r.handle);
+            if (cand) break;
+          }
+        }
+      }
+
+      // IMPORTANT: do NOT ever consider m.to / m.cc as sender candidates
+
+      if (cand) {
+        const email = firstNonExcludedEmail([cand]);
+        if (email) return email;
+      }
     }
   } catch { /* ignore */ }
 
-  // Fallback: conversation participants (exclude teammates and blocked address)
+  // Final fallback: conversation participants (exclude teammates)
   try {
     const recips = await ctx.listRecipients?.();
     const arr = recips?.results || [];
     const email = firstNonExcludedEmail(
       arr
         .filter(r => r.handle?.includes("@") && r.type !== "teammate")
+        // Prefer those that Front marks as 'from' if present
+        .sort((a, b) => ((a.role === "from") === (b.role === "from")) ? 0 : (a.role === "from" ? -1 : 1))
         .map(r => r.handle)
     );
     if (email) return email;
@@ -284,6 +308,7 @@ function formatLocalDateTimeWithTZ(localStr, timeZone) {
 
   return "";
 }
+
 
 
     Front.contextUpdates.subscribe(async (ctx) => {
